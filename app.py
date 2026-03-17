@@ -10,19 +10,21 @@ st.set_page_config(page_title="PEPCO Label Automation V2", layout="wide")
 
 st.title("PEPCO Label Automation V2")
 
-# ------------------------------
-# Extract General Info
-# ------------------------------
+
+# =============================
+# Extract General Information
+# =============================
 def extract_general_data(text):
 
-    order_id = re.search(r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_]+)", text)
+    order_id = re.search(r"ORD\d+_\d+", text)
     style = re.search(r"\b\d{6}\b", text)
+
     supplier_code = re.search(r"Supplier product code\s*\.{2,}\s*(.+)", text)
     item_class = re.search(r"Item classification\s*\.{2,}\s*(.+)", text)
     supplier = re.search(r"Supplier name\s*\.{2,}\s*(.+)", text)
 
     return {
-        "Order_ID": order_id.group(1) if order_id else "",
+        "Order_ID": order_id.group(0) if order_id else "",
         "Style": style.group(0) if style else "",
         "Supplier_product_code": supplier_code.group(1).strip() if supplier_code else "",
         "Item_classification": item_class.group(1).strip() if item_class else "",
@@ -31,40 +33,42 @@ def extract_general_data(text):
     }
 
 
-# ------------------------------
+# =============================
 # Extract Label Data
-# ------------------------------
+# =============================
 def extract_label_data(text):
 
     tc = re.search(r"TC\s*-\s*(T\d+)", text)
-    item = re.search(r"ITEM\s*(\d+)", text)
+
     product = re.search(r"ITEM\s*\d+\s*\n\s*(.+)", text)
+
     barcode = re.search(r"\b\d{13}\b", text)
 
-    inner_qty = re.search(r"(\d+)\s*Pcs\s*Inner", text, re.IGNORECASE)
-    outer_qty = re.search(r"(\d+)\s*Inner\s*OUTER", text, re.IGNORECASE)
+    inner_qty = re.search(r"\d+\s*Pcs", text, re.IGNORECASE)
 
-    inner_kg = re.search(r"MAX\.\s*(\d+\s*kg)", text)
+    outer_qty = re.search(r"\d+\s*Inner", text, re.IGNORECASE)
+
+    inner_kg = re.search(r"MAX\.\s*\d+\s*kg", text, re.IGNORECASE)
+
     season = re.search(r"\b(AW|SS)\d{2}\b", text)
 
     return {
         "TC_Number": tc.group(1) if tc else "",
-        "ITEM_Number": item.group(1) if item else "",
         "Product_name": product.group(1).strip() if product else "",
         "Barcode": barcode.group(0) if barcode else "",
-        "Inner_kg": inner_kg.group(1) if inner_kg else "",
+        "Inner_kg": inner_kg.group(0) if inner_kg else "",
         "Season": season.group(0) if season else "",
-        "Inner_qty": inner_qty.group(1) if inner_qty else "",
-        "Outer_qty": outer_qty.group(1) if outer_qty else ""
+        "Inner_qty": inner_qty.group(0) if inner_qty else "",
+        "Outer_qty": outer_qty.group(0) if outer_qty else ""
     }
 
 
-# ------------------------------
+# =============================
 # Extract Colour
-# ------------------------------
+# =============================
 def extract_colour(text):
 
-    match = re.search(r"Multicolor\s+([\d\-]+)", text)
+    match = re.search(r"Multicolor", text, re.IGNORECASE)
 
     if match:
         return "MULTICOLOR"
@@ -72,22 +76,23 @@ def extract_colour(text):
     return "UNKNOWN"
 
 
-# ------------------------------
+# =============================
 # Process PDF
-# ------------------------------
+# =============================
 def process_pdf(uploaded_file):
 
     doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
 
-    full_text = ""
+    text = ""
 
     for page in doc:
-        full_text += page.get_text()
+        text += page.get_text()
 
-    general = extract_general_data(full_text)
-    label = extract_label_data(full_text)
+    general = extract_general_data(text)
 
-    colour = extract_colour(full_text)
+    label = extract_label_data(text)
+
+    colour = extract_colour(text)
 
     data = {
         "Order_ID": general["Order_ID"],
@@ -106,37 +111,75 @@ def process_pdf(uploaded_file):
         "Outer_qty": label["Outer_qty"]
     }
 
-    return pd.DataFrame([data])
+    return data
 
 
-# ------------------------------
-# UI
-# ------------------------------
+# =============================
+# UI - Upload PDF
+# =============================
+uploaded_files = st.file_uploader(
+    "Upload PEPCO PO PDFs",
+    type="pdf",
+    accept_multiple_files=True
+)
 
-uploaded_pdf = st.file_uploader("Upload PEPCO PO PDF", type="pdf")
 
-if uploaded_pdf:
+# =============================
+# Batch Processing
+# =============================
+if uploaded_files:
 
-    df = process_pdf(uploaded_pdf)
+    order_ids = []
 
-    st.success("Extraction Complete")
+    first_row = None
 
-    st.dataframe(df)
+    for pdf in uploaded_files:
 
-    # CSV Export
-    csv_buffer = StringIO()
-    writer = pycsv.writer(csv_buffer, delimiter=';', quoting=pycsv.QUOTE_ALL)
+        row = process_pdf(pdf)
 
-    cols = list(df.columns)
+        if row:
 
-    writer.writerow(cols)
+            if row["Order_ID"]:
+                order_ids.append(row["Order_ID"])
 
-    for row in df.itertuples(index=False):
-        writer.writerow(row)
+            if first_row is None:
+                first_row = row
 
-    st.download_button(
-        "Download CSV",
-        csv_buffer.getvalue().encode('utf-8-sig'),
-        file_name="pepco_label_data.csv",
-        mime="text/csv"
-    )
+
+    if first_row:
+
+        combined_order_id = "+".join(order_ids)
+
+        first_row["Order_ID"] = combined_order_id
+
+        df = pd.DataFrame([first_row])
+
+        st.success("Batch Processing Complete")
+
+        st.dataframe(df)
+
+
+        # =============================
+        # CSV Export
+        # =============================
+        csv_buffer = StringIO()
+
+        writer = pycsv.writer(
+            csv_buffer,
+            delimiter=';',
+            quoting=pycsv.QUOTE_ALL
+        )
+
+        cols = list(df.columns)
+
+        writer.writerow(cols)
+
+        for row in df.itertuples(index=False):
+            writer.writerow(row)
+
+        st.download_button(
+            "Download CSV",
+            csv_buffer.getvalue().encode('utf-8-sig'),
+            file_name="pepco_label_data.csv",
+            mime="text/csv"
+        )
