@@ -46,7 +46,7 @@ def extract_label_data(text):
 
     inner_qty = re.search(r"\d+\s*Pcs", text, re.IGNORECASE)
 
-    outer_qty = re.search(r"\d+\s*Inner", text, re.IGNORECASE)
+    outer_qty = re.search(r"(\d+)\s*Inner", text, re.IGNORECASE)
 
     inner_kg = re.search(r"MAX\.\s*\d+\s*kg", text, re.IGNORECASE)
 
