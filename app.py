@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import fitz
 import pandas as pd
@@ -8,14 +9,16 @@ import csv as pycsv
 
 st.set_page_config(page_title="PEPCO Label Automation V3", layout="wide")
 
-st.title("PEPCO Label Automation V3 (Optimized)")
+st.title("PEPCO Label Automation V3 (Final)")
 
 # =============================
-# General Data
+# General Data (OLD BEST)
 # =============================
 def extract_general_data(text):
+    order_match = re.search(r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_+-]+)", text, re.IGNORECASE)
+
     return {
-        "Order_ID": re.search(r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_+-]+)", text, re.IGNORECASE).group(1) if re.search(r"Order\s*-\s*ID", text) else "",
+        "Order_ID": order_match.group(1).strip() if order_match else "",
         "Style": re.search(r"Item No\s*\.{2,}\s*(\d+)", text).group(1) if re.search(r"Item No", text) else "",
         "Supplier_product_code": re.search(r"Supplier product code\s*\.{2,}\s*(.+)", text, re.IGNORECASE).group(1).strip() if re.search(r"Supplier product code", text) else "",
         "Item_classification": re.search(r"Item classification\s*\.{2,}\s*(.+)", text, re.IGNORECASE).group(1).strip() if re.search(r"Item classification", text) else "",
@@ -60,13 +63,33 @@ def extract_label_data(text):
     }
 
 # =============================
-# Colour
+# Colour (OLD SMART)
 # =============================
 def extract_colour(text):
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    for line in lines:
-        if len(line) < 30 and not re.search(r"\d", line):
-            return line.upper()
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    skip_keywords = [
+        "PURCHASE", "COLOUR", "TOTAL", "PANTONE", "SUPPLIER", "PRICE",
+        "ORDERED", "SIZES", "TPG", "TPX", "USD", "NIP", "PEPCO",
+        "Poland", "BARCODE", "INNER", "OUTER", "MAX", "TC", "ITEM", "PRODUCT"
+    ]
+
+    filtered = [
+        line for line in lines
+        if all(k.lower() not in line.lower() for k in skip_keywords)
+        and not re.match(r"^[\d\s,./-]+$", line)
+        and len(line) > 2
+    ]
+
+    if filtered:
+        colour = filtered[0]
+        colour = re.sub(r'[\d\.\)\(]+', '', colour).strip().upper()
+
+        if len(colour) > 50:
+            return "UNKNOWN"
+
+        return colour
+
     return "UNKNOWN"
 
 # =============================
@@ -102,7 +125,7 @@ if uploaded_files:
     df = pd.DataFrame(rows)
 
     st.success(f"Processed {len(df)} files")
-    st.dataframe(df)
+    st.dataframe(df, use_container_width=True)
 
     # CSV Export
     buffer = StringIO()
@@ -116,4 +139,5 @@ if uploaded_files:
 
 # Footer
 st.markdown("---")
-st.caption("Optimized PEPCO Automation | Clean Version")
+st.caption("PEPCO Automation Final Version | Stable & Optimized")
+```
