@@ -447,10 +447,10 @@ def extract_order_id_only(file):
 
 
 # ================================================================
-#  MAIN PDF EXTRACTION ENGINE (UPDATED WITH NEW FIELDS)
+# MAIN PDF EXTRACTION ENGINE (UPDATED - SKU removed from CSV)
 # ================================================================
 def extract_data_from_pdf(file):
-    """Robust PEPCO extractor with new fields: TC, Product_name, Barcode, etc."""
+    """Robust PEPCO extractor with SKU for filename only."""
     try:
         raw = file.read()
         if not raw:
@@ -508,7 +508,7 @@ def extract_data_from_pdf(file):
         # ---------------- AUTO COLOUR EXTRACTION ----------------
         colour = extract_colour_from_pdf_pages(pages_text)
 
-        # ---------------- SKU extraction ----------------
+        # ---------------- SKU extraction (ONLY FOR FILENAME, NOT IN CSV) ----------------
         skus = []
         for txt in pages_text:
             skus.extend(re.findall(r"\b\d{8}\b", txt))
@@ -529,12 +529,15 @@ def extract_data_from_pdf(file):
             st.error("SKU missing from PDF.")
             return None
 
+        # Store SKUs for filename (will be removed from final CSV)
+        sku_for_filename = "_".join(skus) if skus else "UNKNOWN"
+
         season_value = (
             f"{season.group(1)}{season.group(2)}"
             if season else "UNKNOWN"
         )
 
-        # ---------------- BUILD RESULT (WITH NEW FIELDS) ----------------
+        # ---------------- BUILD RESULT (WITHOUT SKU in output) ----------------
         results = []
         for sku in skus:
             results.append({
@@ -554,7 +557,9 @@ def extract_data_from_pdf(file):
                 "Inner_kg": inner_kg,
                 "Season_st": season_st,
                 "Inner_qty": inner_qty,
-                "Outer_qty": outer_qty
+                "Outer_qty": outer_qty,
+                # SKU stored temporarily for filename (will be removed)
+                "_temp_sku_for_filename": sku_for_filename
             })
 
         return results
@@ -565,7 +570,7 @@ def extract_data_from_pdf(file):
 
 
 # ================================================================
-# PART 3 — MAIN PROCESSOR + UI SECTION + APP ENTRY
+#  MAIN PROCESSOR + UI SECTION + APP ENTRY (UPDATED)
 # ================================================================
 
 def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
@@ -582,6 +587,13 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
         return
 
     df = pd.DataFrame(result_data)
+
+    # ----- Get SKU for filename before removing it -----
+    sku_for_filename = df['_temp_sku_for_filename'].iloc[0] if '_temp_sku_for_filename' in df.columns else "UNKNOWN"
+    
+    # ----- Remove temporary SKU column (not needed in CSV) -----
+    if '_temp_sku_for_filename' in df.columns:
+        df = df.drop(columns=['_temp_sku_for_filename'])
 
     # ----- Base values from first row -----
     first_row = result_data[0] if len(result_data) > 0 else {}
@@ -628,7 +640,7 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     df["Item_name_English"] = df["Item_name_EN"].apply(clean_item_name_english)
 
     # ============================================================
-    #  FINAL COLUMNS (ALL FIELDS: OLD + NEW)
+    #  FINAL COLUMNS (NO SKU COLUMN)
     # ============================================================
     final_cols = [
         "Order_ID",
@@ -673,14 +685,12 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     for row in edited_df.itertuples(index=False):
         writer.writerow(row)
 
-    # ---------- Custom CSV filename ----------
+    # ---------- Custom CSV filename (USING SKU) ----------
     first_row_df = df.iloc[0]
     season_val = first_row_df.get("Season", "UNKNOWN").upper()
 
-    all_skus = df['Colour'].apply(
-        lambda x: re.sub(r"[^A-Za-z0-9]", "_", str(x))
-    ).tolist()
-    sku_val = "_".join(all_skus) if all_skus else "UNKNOWN"
+    # Use the SKU we saved earlier for filename
+    sku_val = sku_for_filename
 
     supplier_code = first_row_df.get("Supplier_product_code", "UNKNOWN")
     style_val = first_row_df.get("Style", "UNKNOWN")
@@ -696,7 +706,6 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
         file_name=custom_filename,
         mime="text/csv"
     )
-
 
 # ================================================================
 #  PEPCO SECTION (Uploader + Reset)
