@@ -163,19 +163,72 @@ def load_product_translations():
 
 
 # ================================================================
-#  HELPER FUNCTIONS
+#  NEW EXTRACTION FUNCTIONS FOR B PART
 # ================================================================
 
-# ---------- Auto detect PLN price from PDF text ----------
-def detect_pl_sales_price(full_text):
-    try:
-        m = re.search(r"PL\s+[^\n]*?(\d+[\.,]\d+)", full_text)
-        if m:
-            return m.group(1).replace(',', '.')
-    except Exception:
-        pass
-    return None
+def extract_tc_number(text):
+    """Extract TC number from PDF text."""
+    m = re.search(r"TC\s*-\s*(T\d+)", text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"TC\s*[:.]?\s*(T\d+)", text, re.IGNORECASE)
+    return m.group(1) if m else ""
 
+
+def extract_product_name(text):
+    """Extract product name from PDF text."""
+    m = re.search(r"ITEM\s*\d+\s*\n\s*(.+)", text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"Product\s*name\s*[:.]?\s*(.+)", text, re.IGNORECASE)
+    return m.group(1).strip() if m else ""
+
+
+def extract_barcode(text):
+    """Extract barcode (13 digits) from PDF text."""
+    m = re.search(r"\b\d{13}\b", text)
+    return m.group(0) if m else ""
+
+
+def extract_inner_kg(text):
+    """Extract inner kg from PDF text."""
+    m = re.search(r"MAX\.?\s*(\d+)\s*kg", text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"(\d+)\s*kg", text, re.IGNORECASE)
+    return f"MAX. {m.group(1)} kg" if m else ""
+
+
+def extract_season(text):
+    """Extract season code (AW/SS/FW/SW + year) from PDF text."""
+    m = re.search(r"\b(AW|SS|FW|SW)\d{2}\b", text, re.IGNORECASE)
+    return m.group(0).upper() if m else ""
+
+
+def extract_inner_qty(text):
+    """Extract inner quantity from PDF text."""
+    m = re.search(r"(\d+)\s*Pcs", text, re.IGNORECASE)
+    return f"{m.group(1)} Pcs" if m else ""
+
+
+def extract_outer_qty(text):
+    """Extract outer quantity from PDF text."""
+    patterns = [
+        r"(\d+)\s*Inner\s*OUTER",
+        r"(\d+)\s*OUTER",
+        r"OUTER\s*[:.]?\s*(\d+)",
+        r"(\d+)\s*X\s*INNER\s*OUTER",
+        r"OUTER\s*QTY\s*[:.]?\s*(\d+)"
+    ]
+
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE)
+        if m:
+            return f"{m.group(1)} Inner"
+
+    return ""
+
+
+# ================================================================
+#  HELPER FUNCTIONS
+# ================================================================
 
 # ---------- Classification → mapping ----------
 def get_classification_type(item_class):
@@ -287,7 +340,7 @@ def clean_item_name_english(name: str) -> str:
 
 
 # ================================================================
-# PART 2 — PDF EXTRACTION + COLOUR SYSTEM
+# PART 2 — PDF EXTRACTION + COLOUR SYSTEM + NEW EXTRACTIONS
 # ================================================================
 
 # ================================================================
@@ -394,10 +447,10 @@ def extract_order_id_only(file):
 
 
 # ================================================================
-#  MAIN PDF EXTRACTION ENGINE
+#  MAIN PDF EXTRACTION ENGINE (UPDATED WITH NEW FIELDS)
 # ================================================================
 def extract_data_from_pdf(file):
-    """Robust PEPCO extractor (5-page + 6-page)."""
+    """Robust PEPCO extractor with new fields: TC, Product_name, Barcode, etc."""
     try:
         raw = file.read()
         if not raw:
@@ -413,6 +466,15 @@ def extract_data_from_pdf(file):
         pages_text = [doc[i].get_text() for i in range(len(doc))]
         full_text = "\n".join(pages_text)
         page1 = pages_text[0]
+
+        # ---------------- EXTRACT NEW FIELDS (B PART) ----------------
+        tc_number = extract_tc_number(full_text)
+        product_name = extract_product_name(full_text)
+        barcode = extract_barcode(full_text)
+        inner_kg = extract_inner_kg(full_text)
+        season_st = extract_season(full_text)
+        inner_qty = extract_inner_qty(full_text)
+        outer_qty = extract_outer_qty(full_text)
 
         # ---------------- Item Name EN ----------------
         item_name_en = None
@@ -472,7 +534,7 @@ def extract_data_from_pdf(file):
             if season else "UNKNOWN"
         )
 
-        # ---------------- BUILD RESULT ----------------
+        # ---------------- BUILD RESULT (WITH NEW FIELDS) ----------------
         results = []
         for sku in skus:
             results.append({
@@ -484,7 +546,15 @@ def extract_data_from_pdf(file):
                 "Supplier_name": supplier_name.group(1).strip() if supplier_name else "UNKNOWN",
                 "today_date": datetime.today().strftime('%d-%m-%Y'),
                 "Item_name_EN": item_name_en or "",
-                "Season": season_value
+                "Season": season_value,
+                # NEW FIELDS (B PART)
+                "TC_Number_st1": tc_number,
+                "Product_name": product_name,
+                "Barcode_st1": barcode,
+                "Inner_kg": inner_kg,
+                "Season_st": season_st,
+                "Inner_qty": inner_qty,
+                "Outer_qty": outer_qty
             })
 
         return results
@@ -558,7 +628,7 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     df["Item_name_English"] = df["Item_name_EN"].apply(clean_item_name_english)
 
     # ============================================================
-    #  FINAL COLUMNS (only the ones we need)
+    #  FINAL COLUMNS (ALL FIELDS: OLD + NEW)
     # ============================================================
     final_cols = [
         "Order_ID",
@@ -570,7 +640,15 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
         "today_date",
         "Item_name_English",
         "Season",
-        "Dept"
+        "Dept",
+        # NEW FIELDS (B PART)
+        "TC_Number_st1",
+        "Product_name",
+        "Barcode_st1",
+        "Inner_kg",
+        "Season_st",
+        "Inner_qty",
+        "Outer_qty"
     ]
 
     # Ensure all columns exist
