@@ -18,7 +18,6 @@ from io import StringIO
 import csv as pycsv
 from datetime import datetime, timedelta
 import os
-import requests
 
 
 # ================================================================
@@ -139,30 +138,6 @@ def check_password():
 
 
 # ================================================================
-#  PRODUCT TRANSLATION LOADER (only needed for DEPT mapping)
-# ================================================================
-@st.cache_data(ttl=600)
-def load_product_translations():
-    """Load product name translations from Google Sheet."""
-    try:
-        sheet_id = "1ue68TSJQQedKa7sVBB4syOc0OXJNaLS7p9vSnV52mKA"
-        sheet_name = "SS26 Product_Name"
-        encoded = requests.utils.quote(sheet_name)
-
-        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={encoded}"
-        df = pd.read_csv(url)
-
-        if df.empty:
-            st.error("Loaded translations but sheet appears empty")
-
-        return df
-
-    except Exception as e:
-        st.error(f"❌ Failed to load translations: {str(e)}")
-        return pd.DataFrame()
-
-
-# ================================================================
 #  NEW EXTRACTION FUNCTIONS FOR B PART
 # ================================================================
 
@@ -229,84 +204,6 @@ def extract_outer_qty(text):
 # ================================================================
 #  HELPER FUNCTIONS
 # ================================================================
-
-# ---------- Classification → mapping ----------
-def get_classification_type(item_class):
-    """Determine class type key."""
-    if not item_class:
-        return None
-
-    ic = item_class.lower()
-
-    if 'younger girls outerwear' in ic:
-        return 'yg'
-    if 'older girls outerwear' in ic:
-        return 'og'
-    if 'younger boys outerwear' in ic:
-        return 'yb'
-    if 'older boys outerwear' in ic:
-        return 'ob'
-    if 'baby girls outerwear' in ic:
-        return 'a'
-    if 'baby boys outerwear' in ic:
-        return 'b'
-    if 'baby girls essentials' in ic:
-        return 'd_girls'
-    if 'baby boys essentials' in ic:
-        return 'd'
-    if 'ladies outerwear' in ic:
-        return 'l'
-    if 'mens outerwear' in ic:
-        return 'm'
-
-    return None
-
-
-# ---------- Map Item_classification → Dept label ----------
-def map_item_class_to_dept_label(item_class):
-    """Map item_class text to UI Department names."""
-    if not item_class:
-        return None
-
-    ic = item_class.lower()
-
-    if 'baby boys outerwear' in ic or 'baby boys essentials' in ic:
-        return "Baby Boy"
-    if 'baby girls outerwear' in ic or 'baby girls essentials' in ic:
-        return "Baby Girl"
-    if 'younger boys outerwear' in ic or 'older boys outerwear' in ic:
-        return "Boys"
-    if 'younger girls outerwear' in ic or 'older girls outerwear' in ic:
-        return "Girls"
-    if 'ladies outerwear' in ic:
-        return "Women"
-    if 'mens outerwear' in ic:
-        return "Mens"
-
-    return None
-
-
-# ---------- Map Item_classification → DEPT column ----------
-def get_dept_value(item_class):
-    """Maps classification → BABY / KIDS / TEENS / WOMEN / MEN."""
-    if not item_class:
-        return ""
-
-    ic = item_class.lower()
-
-    if any(x in ic for x in ['baby boys', 'baby girls']):
-        return "BABY"
-    if any(x in ic for x in ['younger boys', 'younger girls']):
-        return "KIDS"
-    if any(x in ic for x in ['older girls', 'older boys']):
-        return "TEENS"
-    if 'ladies outerwear' in ic:
-        return "WOMEN"
-    if 'mens outerwear' in ic:
-        return "MEN"
-
-    return ""
-
 
 # ---------- Item_name_EN cleaning ----------
 def clean_item_name_english(name: str) -> str:
@@ -447,7 +344,7 @@ def extract_order_id_only(file):
 
 
 # ================================================================
-# MAIN PDF EXTRACTION ENGINE (UPDATED - SKU removed from CSV)
+#  MAIN PDF EXTRACTION ENGINE
 # ================================================================
 def extract_data_from_pdf(file):
     """Robust PEPCO extractor with SKU for filename only."""
@@ -570,14 +467,12 @@ def extract_data_from_pdf(file):
 
 
 # ================================================================
-#  MAIN PROCESSOR + UI SECTION + APP ENTRY (UPDATED)
+# PART 3 — MAIN PROCESSOR + UI SECTION + APP ENTRY
 # ================================================================
 
 def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     """Main pipeline: parse PDF, build DF, export CSV."""
-    # ----- Load reference data -----
-    translations_df = load_product_translations()
-
+    
     if not uploaded_pdf:
         return
 
@@ -597,7 +492,6 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
 
     # ----- Base values from first row -----
     first_row = result_data[0] if len(result_data) > 0 else {}
-    pdf_item_class = first_row.get("Item_classification", "")
     pdf_item_name_en = (first_row.get("Item_name_EN") or "").strip()
 
     # ----- Merge extra Order IDs from other PDFs -----
@@ -607,40 +501,11 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
         except Exception:
             pass
 
-    # ============================================================
-    #  UI Controls (Department only)
-    # ============================================================
-    c1, _ = st.columns([2, 3])
-
-    # -- Department select (default from item_class) --
-    depts = translations_df['DEPARTMENT'].dropna().unique().tolist() if not translations_df.empty else []
-    default_dept_label = map_item_class_to_dept_label(pdf_item_class)
-    default_dept_index = 0
-
-    if default_dept_label and depts:
-        for i, d in enumerate(depts):
-            if str(d).strip().lower() == str(default_dept_label).strip().lower():
-                default_dept_index = i
-                break
-
-    with c1:
-        selected_dept = st.selectbox(
-            "Select Department",
-            options=depts if depts else ["No Data"],
-            index=default_dept_index if depts else 0,
-            key="ui_dept"
-        )
-
-    # ============================================================
-    #  DataFrame enrichment (Dept, Item_name_English)
-    # ============================================================
-    df['Dept'] = df['Item_classification'].apply(get_dept_value)
-
     # Clean Item_name_English
     df["Item_name_English"] = df["Item_name_EN"].apply(clean_item_name_english)
 
     # ============================================================
-    #  FINAL COLUMNS (NO SKU COLUMN)
+    #  FINAL COLUMNS (NO Department)
     # ============================================================
     final_cols = [
         "Order_ID",
@@ -652,7 +517,6 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
         "today_date",
         "Item_name_English",
         "Season",
-        "Dept",
         # NEW FIELDS (B PART)
         "TC_Number_st1",
         "Product_name",
@@ -706,6 +570,7 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
         file_name=custom_filename,
         mime="text/csv"
     )
+
 
 # ================================================================
 #  PEPCO SECTION (Uploader + Reset)
