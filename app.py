@@ -6,8 +6,8 @@ from datetime import datetime
 from io import StringIO
 import csv as pycsv
 
-st.set_page_config(page_title="PEPCO Label Automation V3", layout="wide")
-st.title("PEPCO Label Automation V3")
+st.set_page_config(page_title="PEPCO Label Automation V4", layout="wide")
+st.title("PEPCO Label Automation V4")
 
 # ================================================================
 # GENERAL DATA
@@ -79,7 +79,7 @@ def extract_label_data(text):
     }
 
 # ================================================================
-# COLOUR EXTRACTION (FINAL FIXED)
+# COLOUR EXTRACTION (FINAL STABLE)
 # ================================================================
 def extract_colour_from_page2(text):
     try:
@@ -95,7 +95,7 @@ def extract_colour_from_page2(text):
     return None
 
 
-def extract_colour_from_pdf_pages(pages_text, page_number=1):
+def extract_colour_from_pdf_pages(pages_text):
 
     # 1️⃣ Standard format
     for txt in pages_text:
@@ -125,28 +125,28 @@ def extract_colour_from_pdf_pages(pages_text, page_number=1):
                 if m:
                     return m.group(1).strip().upper()
 
-    # 4️⃣ Page 2 fallback
+    # 4️⃣ Legacy page-2 fallback
     if len(pages_text) > 1:
         legacy = extract_colour_from_page2(pages_text[1])
         if legacy:
             return legacy
 
-    # 5️⃣ Manual input
+    # 5️⃣ Manual fallback
     st.warning("⚠️ Colour not found in PDF")
 
-    key = f"manual_colour_{page_number}"
+    key = "manual_colour_input"
     if key not in st.session_state:
         st.session_state[key] = ""
 
-    manual = st.text_input("Enter Colour:", key=key)
-
-    return manual.strip().upper() if manual else "UNKNOWN"
+    return st.text_input("Enter Colour:", key=key).strip().upper() or "UNKNOWN"
 
 # ================================================================
-# PROCESS PDF
+# PROCESS FULL DATA (ONLY FIRST FILE)
 # ================================================================
 def process_pdf(uploaded_file):
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+
+    data = uploaded_file.read()
+    doc = fitz.open(stream=data, filetype="pdf")
 
     pages_text = [page.get_text() for page in doc]
     full_text = "\n".join(pages_text)
@@ -162,6 +162,29 @@ def process_pdf(uploaded_file):
     }
 
 # ================================================================
+# ORDER ID ONLY (ALL FILES)
+# ================================================================
+def extract_order_id_only(file):
+
+    try:
+        file.seek(0)
+        data = file.read()
+
+        with fitz.open(stream=data, filetype="pdf") as doc:
+            text = "\n".join([p.get_text() for p in doc])
+
+    except:
+        return None
+
+    match = re.search(
+        r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_+-]+)",
+        text,
+        re.IGNORECASE
+    )
+
+    return match.group(1).strip() if match else None
+
+# ================================================================
 # UI
 # ================================================================
 uploaded_files = st.file_uploader(
@@ -174,34 +197,24 @@ if uploaded_files:
 
     all_rows = []
     order_ids = []
-    first = True
 
     progress = st.progress(0)
     status = st.empty()
 
     for i, pdf in enumerate(uploaded_files):
 
-        status.text(f"Processing file {i+1}/{len(uploaded_files)}...")
+        status.text(f"Processing {i+1}/{len(uploaded_files)}...")
 
-        if first:
+        # ALL FILES → ORDER ID
+        oid = extract_order_id_only(pdf)
+        if oid:
+            order_ids.append(oid)
+
+        # ONLY FIRST FILE → FULL DATA
+        if i == 0:
             row = process_pdf(pdf)
-            first = False
-        else:
-            order_id = re.search(
-                r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_+-]+)",
-                pdf.read().decode("latin1"),
-                re.IGNORECASE
-            )
-            if order_id:
-                order_ids.append(order_id.group(1))
-
-            progress.progress((i + 1) / len(uploaded_files))
-            continue
-
-        if row:
-            all_rows.append(row)
-            if row["Order_ID"]:
-                order_ids.append(row["Order_ID"])
+            if row:
+                all_rows.append(row)
 
         progress.progress((i + 1) / len(uploaded_files))
 
@@ -250,4 +263,4 @@ if uploaded_files:
         st.error("❌ No data extracted")
 
 st.markdown("---")
-st.caption("PEPCO Label Automation V3 | Final Stable Version")
+st.caption("PEPCO Label Automation V4 | Clean Production Version")
