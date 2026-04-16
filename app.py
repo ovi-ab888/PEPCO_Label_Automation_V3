@@ -157,10 +157,32 @@ def extract_product_name(text):
     return m.group(1).strip() if m else ""
 
 
-def extract_barcode(text):
-    """Extract barcode (13 digits) from PDF text."""
-    m = re.search(r"\b\d{13}\b", text)
-    return m.group(0) if m else ""
+def extract_all_barcodes_from_page4_plus(pages_text):
+    """
+    Extract ALL barcodes (13 digits) ONLY from PAGE 4 and onwards.
+    Pages 1, 2, 3 are SKIPPED.
+    Returns max 7 unique barcodes.
+    """
+    barcode_list = []
+    
+    # Start from page 4 (index 3) onwards
+    if len(pages_text) >= 4:
+        for i in range(3, len(pages_text)):  # index 3 = page 4
+            page_text = pages_text[i]
+            barcodes_on_page = re.findall(r"\b\d{13}\b", page_text)
+            barcode_list.extend(barcodes_on_page)
+    else:
+        st.warning("⚠️ PDF has less than 4 pages. Barcode extraction from page 4+ not possible.")
+        return []
+    
+    # Remove duplicates while preserving order
+    unique_barcodes = []
+    for b in barcode_list:
+        if b not in unique_barcodes:
+            unique_barcodes.append(b)
+    
+    # Return first 7 unique barcodes
+    return unique_barcodes[:7]
 
 
 def extract_inner_kg(text):
