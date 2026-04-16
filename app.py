@@ -344,10 +344,49 @@ def extract_order_id_only(file):
 
 
 # ================================================================
-#  MAIN PDF EXTRACTION ENGINE
+#  NEW EXTRACTION FUNCTIONS (MULTIPLE VALUES)
 # ================================================================
+
+def extract_all_tc_numbers(text):
+    """Extract ALL TC numbers from PDF text (max 7)."""
+    tc_list = []
+    
+    # Pattern for TC numbers
+    patterns = [
+        r"TC\s*-\s*(T\d+)",
+        r"TC\s*[:.]?\s*(T\d+)"
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for m in matches:
+            if m not in tc_list:
+                tc_list.append(m)
+    
+    # Return first 7 unique TC numbers
+    return tc_list[:7]
+
+
+def extract_all_barcodes(text):
+    """Extract ALL barcodes (13 digits) from PDF text (max 7)."""
+    barcode_list = re.findall(r"\b\d{13}\b", text)
+    
+    # Remove duplicates while preserving order
+    unique_barcodes = []
+    for b in barcode_list:
+        if b not in unique_barcodes:
+            unique_barcodes.append(b)
+    
+    # Return first 7 unique barcodes
+    return unique_barcodes[:7]
+
+
+# ================================================================
+#  MODIFIED MAIN EXTRACTION FUNCTION
+# ================================================================
+
 def extract_data_from_pdf(file):
-    """Robust PEPCO extractor with SKU for filename only."""
+    """Robust PEPCO extractor with multiple TC and Barcode support."""
     try:
         raw = file.read()
         if not raw:
@@ -364,10 +403,14 @@ def extract_data_from_pdf(file):
         full_text = "\n".join(pages_text)
         page1 = pages_text[0]
 
-        # ---------------- EXTRACT NEW FIELDS (B PART) ----------------
-        tc_number = extract_tc_number(full_text)
+        # ---------------- EXTRACT ALL TC NUMBERS ----------------
+        all_tc_numbers = extract_all_tc_numbers(full_text)
+        
+        # ---------------- EXTRACT ALL BARCODES ----------------
+        all_barcodes = extract_all_barcodes(full_text)
+        
+        # ---------------- EXTRACT SINGLE VALUES ----------------
         product_name = extract_product_name(full_text)
-        barcode = extract_barcode(full_text)
         inner_kg = extract_inner_kg(full_text)
         season_st = extract_season(full_text)
         inner_qty = extract_inner_qty(full_text)
@@ -405,12 +448,11 @@ def extract_data_from_pdf(file):
         # ---------------- AUTO COLOUR EXTRACTION ----------------
         colour = extract_colour_from_pdf_pages(pages_text)
 
-        # ---------------- SKU extraction (ONLY FOR FILENAME, NOT IN CSV) ----------------
+        # ---------------- SKU extraction (FOR FILENAME) ----------------
         skus = []
         for txt in pages_text:
             skus.extend(re.findall(r"\b\d{8}\b", txt))
 
-        # Dedupe SKUs
         def _dedupe(seq):
             seen = set()
             out = []
@@ -426,7 +468,6 @@ def extract_data_from_pdf(file):
             st.error("SKU missing from PDF.")
             return None
 
-        # Store SKUs for filename (will be removed from final CSV)
         sku_for_filename = "_".join(skus) if skus else "UNKNOWN"
 
         season_value = (
@@ -434,10 +475,10 @@ def extract_data_from_pdf(file):
             if season else "UNKNOWN"
         )
 
-        # ---------------- BUILD RESULT (WITHOUT SKU in output) ----------------
+        # ---------------- BUILD RESULT WITH MULTIPLE TC & BARCODE ----------------
         results = []
         for sku in skus:
-            results.append({
+            row_data = {
                 "Order_ID": order_id.group(1).strip() if order_id else "UNKNOWN",
                 "Style": style_code.group() if style_code else "UNKNOWN",
                 "Colour": colour,
@@ -447,17 +488,31 @@ def extract_data_from_pdf(file):
                 "today_date": datetime.today().strftime('%d-%m-%Y'),
                 "Item_name_EN": item_name_en or "",
                 "Season": season_value,
-                # NEW FIELDS (B PART)
-                "TC_Number_st1": tc_number,
                 "Product_name": product_name,
-                "Barcode_st1": barcode,
                 "Inner_kg": inner_kg,
                 "Season_st": season_st,
                 "Inner_qty": inner_qty,
                 "Outer_qty": outer_qty,
-                # SKU stored temporarily for filename (will be removed)
                 "_temp_sku_for_filename": sku_for_filename
-            })
+            }
+            
+            # Add TC numbers (st1 to st7)
+            for i in range(7):
+                col_name = f"TC_Number_st{i+1}"
+                if i < len(all_tc_numbers):
+                    row_data[col_name] = all_tc_numbers[i]
+                else:
+                    row_data[col_name] = ""
+            
+            # Add Barcodes (st1 to st7)
+            for i in range(7):
+                col_name = f"Barcode_st{i+1}"
+                if i < len(all_barcodes):
+                    row_data[col_name] = all_barcodes[i]
+                else:
+                    row_data[col_name] = ""
+            
+            results.append(row_data)
 
         return results
 
@@ -467,34 +522,30 @@ def extract_data_from_pdf(file):
 
 
 # ================================================================
-# PART 3 — MAIN PROCESSOR + UI SECTION + APP ENTRY
+#  UPDATED PROCESS FUNCTION (DYNAMIC COLUMNS)
 # ================================================================
 
 def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
-    """Main pipeline: parse PDF, build DF, export CSV."""
+    """Main pipeline: parse PDF, build DF with dynamic columns, export CSV."""
     
     if not uploaded_pdf:
         return
 
-    # ----- Parse PDF to structured data -----
     result_data = extract_data_from_pdf(uploaded_pdf)
     if not result_data:
         return
 
     df = pd.DataFrame(result_data)
 
-    # ----- Get SKU for filename before removing it -----
+    # Get SKU for filename
     sku_for_filename = df['_temp_sku_for_filename'].iloc[0] if '_temp_sku_for_filename' in df.columns else "UNKNOWN"
     
-    # ----- Remove temporary SKU column (not needed in CSV) -----
     if '_temp_sku_for_filename' in df.columns:
         df = df.drop(columns=['_temp_sku_for_filename'])
 
-    # ----- Base values from first row -----
     first_row = result_data[0] if len(result_data) > 0 else {}
     pdf_item_name_en = (first_row.get("Item_name_EN") or "").strip()
 
-    # ----- Merge extra Order IDs from other PDFs -----
     if extra_order_ids:
         try:
             df['Order_ID'] = df['Order_ID'].astype(str) + "+" + extra_order_ids
@@ -505,8 +556,10 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     df["Item_name_English"] = df["Item_name_EN"].apply(clean_item_name_english)
 
     # ============================================================
-    #  FINAL COLUMNS (NO Department)
+    #  DYNAMIC FINAL COLUMNS
     # ============================================================
+    
+    # Base columns
     final_cols = [
         "Order_ID",
         "Style",
@@ -517,16 +570,25 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
         "today_date",
         "Item_name_English",
         "Season",
-        # NEW FIELDS (B PART)
-        "TC_Number_st1",
         "Product_name",
-        "Barcode_st1",
         "Inner_kg",
         "Season_st",
         "Inner_qty",
         "Outer_qty"
     ]
-
+    
+    # Add TC Number columns (st1 to st7) - only if they exist in dataframe
+    tc_cols = [f"TC_Number_st{i+1}" for i in range(7)]
+    for col in tc_cols:
+        if col in df.columns:
+            final_cols.append(col)
+    
+    # Add Barcode columns (st1 to st7) - only if they exist in dataframe
+    barcode_cols = [f"Barcode_st{i+1}" for i in range(7)]
+    for col in barcode_cols:
+        if col in df.columns:
+            final_cols.append(col)
+    
     # Ensure all columns exist
     for col in final_cols:
         if col not in df.columns:
@@ -537,7 +599,7 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
 
     edited_df = st.data_editor(df[final_cols])
 
-    # Build CSV with ; separator & quoted fields
+    # Build CSV
     csv_buffer = StringIO()
     writer = pycsv.writer(
         csv_buffer,
@@ -549,13 +611,10 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     for row in edited_df.itertuples(index=False):
         writer.writerow(row)
 
-    # ---------- Custom CSV filename (USING SKU) ----------
+    # Filename
     first_row_df = df.iloc[0]
     season_val = first_row_df.get("Season", "UNKNOWN").upper()
-
-    # Use the SKU we saved earlier for filename
     sku_val = sku_for_filename
-
     supplier_code = first_row_df.get("Supplier_product_code", "UNKNOWN")
     style_val = first_row_df.get("Style", "UNKNOWN")
 
