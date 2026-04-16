@@ -6,8 +6,15 @@ from datetime import datetime
 from io import StringIO
 import csv as pycsv
 
-st.set_page_config(page_title="PEPCO Label Automation V4", layout="wide")
-st.title("PEPCO Label Automation V4")
+st.set_page_config(page_title="PEPCO Label Automation V5", layout="wide")
+st.title("PEPCO Label Automation V5")
+
+# ================================================================
+# READ FILE SAFELY (IMPORTANT FIX)
+# ================================================================
+def read_pdf_bytes(file):
+    file.seek(0)
+    return file.read()
 
 # ================================================================
 # GENERAL DATA
@@ -29,7 +36,7 @@ def extract_general_data(text):
     }
 
 # ================================================================
-# OUTER QTY (FIXED)
+# OUTER QTY FIXED
 # ================================================================
 def extract_outer_qty(text):
     patterns = [
@@ -79,7 +86,7 @@ def extract_label_data(text):
     }
 
 # ================================================================
-# COLOUR EXTRACTION (FINAL STABLE)
+# COLOUR EXTRACTION
 # ================================================================
 def extract_colour_from_page2(text):
     try:
@@ -97,7 +104,6 @@ def extract_colour_from_page2(text):
 
 def extract_colour_from_pdf_pages(pages_text):
 
-    # 1️⃣ Standard format
     for txt in pages_text:
         m = re.search(
             r"Colour.*?\n.*?\n\s*([A-Za-z ]+)\s+[0-9]{2}-[0-9]{4}",
@@ -107,7 +113,6 @@ def extract_colour_from_pdf_pages(pages_text):
         if m:
             return m.group(1).strip().upper()
 
-    # 2️⃣ Purchase price block
     for txt in pages_text:
         m = re.search(
             r"Purchase price.*?\n\s*([A-Za-z ]+)\s+[0-9]{2}-[0-9]{4}",
@@ -117,7 +122,6 @@ def extract_colour_from_pdf_pages(pages_text):
         if m:
             return m.group(1).strip().upper()
 
-    # 3️⃣ Broken line format
     for txt in pages_text:
         if "colour" in txt.lower():
             for line in txt.splitlines():
@@ -125,28 +129,25 @@ def extract_colour_from_pdf_pages(pages_text):
                 if m:
                     return m.group(1).strip().upper()
 
-    # 4️⃣ Legacy page-2 fallback
     if len(pages_text) > 1:
         legacy = extract_colour_from_page2(pages_text[1])
         if legacy:
             return legacy
 
-    # 5️⃣ Manual fallback
     st.warning("⚠️ Colour not found in PDF")
 
-    key = "manual_colour_input"
+    key = "manual_colour"
     if key not in st.session_state:
         st.session_state[key] = ""
 
     return st.text_input("Enter Colour:", key=key).strip().upper() or "UNKNOWN"
 
 # ================================================================
-# PROCESS FULL DATA (ONLY FIRST FILE)
+# FULL PROCESS (FIRST FILE ONLY)
 # ================================================================
-def process_pdf(uploaded_file):
+def process_pdf_bytes(pdf_bytes):
 
-    data = uploaded_file.read()
-    doc = fitz.open(stream=data, filetype="pdf")
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
     pages_text = [page.get_text() for page in doc]
     full_text = "\n".join(pages_text)
@@ -162,27 +163,23 @@ def process_pdf(uploaded_file):
     }
 
 # ================================================================
-# ORDER ID ONLY (ALL FILES)
+# ORDER ID ONLY (ALL FILES SAFE)
 # ================================================================
-def extract_order_id_only(file):
+def extract_order_id_only(pdf_bytes):
 
     try:
-        file.seek(0)
-        data = file.read()
-
-        with fitz.open(stream=data, filetype="pdf") as doc:
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
             text = "\n".join([p.get_text() for p in doc])
-
     except:
         return None
 
-    match = re.search(
+    m = re.search(
         r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_+-]+)",
         text,
         re.IGNORECASE
     )
 
-    return match.group(1).strip() if match else None
+    return m.group(1).strip() if m else None
 
 # ================================================================
 # UI
@@ -205,14 +202,17 @@ if uploaded_files:
 
         status.text(f"Processing {i+1}/{len(uploaded_files)}...")
 
+        # SAFE READ (IMPORTANT FIX)
+        pdf_bytes = read_pdf_bytes(pdf)
+
         # ALL FILES → ORDER ID
-        oid = extract_order_id_only(pdf)
+        oid = extract_order_id_only(pdf_bytes)
         if oid:
             order_ids.append(oid)
 
-        # ONLY FIRST FILE → FULL DATA
+        # FIRST FILE → FULL DATA ONLY
         if i == 0:
-            row = process_pdf(pdf)
+            row = process_pdf_bytes(pdf_bytes)
             if row:
                 all_rows.append(row)
 
@@ -244,7 +244,7 @@ if uploaded_files:
         st.subheader("📋 Extracted Data")
         st.dataframe(df, use_container_width=True)
 
-        # CSV Export
+        # CSV EXPORT
         buffer = StringIO()
         writer = pycsv.writer(buffer, delimiter=';', quoting=pycsv.QUOTE_ALL)
 
@@ -263,4 +263,4 @@ if uploaded_files:
         st.error("❌ No data extracted")
 
 st.markdown("---")
-st.caption("PEPCO Label Automation V4 | Clean Production Version")
+st.caption("PEPCO Label Automation V5 | Fully Stable Production Version")
