@@ -16,7 +16,7 @@ import pandas as pd
 import re
 from io import StringIO
 import csv as pycsv
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 
 
@@ -38,7 +38,6 @@ THEME_CSS = """
 }
 
 .block-container{max-width:1120px; padding-top:1rem; padding-bottom:3rem;}
-
 h1,h2,h3{font-weight:700;}
 h1{letter-spacing:.2px;} h2,h3{letter-spacing:.1px;}
 
@@ -97,22 +96,18 @@ def check_password():
     """Simple password gate using secrets or environment."""
     expected = None
 
-    # Prefer streamlit secrets
     try:
         expected = st.secrets.get("app_password", None)
     except Exception:
         expected = None
 
-    # Fallback env variable
     if expected is None:
         expected = os.environ.get("PEPCO_APP_PASSWORD")
 
-    # If not found → error
     if expected is None:
         st.error("App password not configured. Please set 'app_password' in secrets or PEPCO_APP_PASSWORD env var.")
         return False
 
-    # When password typed
     def _password_entered():
         if st.session_state.get("password") == expected:
             st.session_state["password_correct"] = True
@@ -123,30 +118,67 @@ def check_password():
         else:
             st.session_state["password_correct"] = False
 
-    # Already correct?
     if st.session_state.get("password_correct", None) is True:
         return True
 
-    # Input box
     st.text_input("Enter Your Access Code", type="password", key="password", on_change=_password_entered)
 
-    # Wrong
     if st.session_state.get("password_correct") is False:
-        st.error("Your password Incorrect,  Please contact Mr. Ovi")
+        st.error("Your password Incorrect, Please contact Mr. Ovi")
 
     return False
 
 
 # ================================================================
-#  NEW EXTRACTION FUNCTIONS FOR B PART
+#  EXTRACTION FUNCTIONS
 # ================================================================
 
-def extract_tc_number(text):
-    """Extract TC number from PDF text."""
-    m = re.search(r"TC\s*-\s*(T\d+)", text, re.IGNORECASE)
-    if not m:
-        m = re.search(r"TC\s*[:.]?\s*(T\d+)", text, re.IGNORECASE)
-    return m.group(1) if m else ""
+def extract_all_tc_numbers_from_page4_plus(pages_text):
+    """
+    Extract ALL TC numbers ONLY from PAGE 4 and onwards.
+    Pages 1, 2, 3 are SKIPPED completely.
+    Returns max 7 unique TC numbers.
+    """
+    tc_list = []
+    
+    if len(pages_text) >= 4:
+        for i in range(3, len(pages_text)):
+            page_text = pages_text[i]
+            
+            patterns = [
+                r"TC\s*-\s*(T\d+)",
+                r"TC\s*[:.]?\s*(T\d+)"
+            ]
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, page_text, re.IGNORECASE)
+                for m in matches:
+                    if m not in tc_list:
+                        tc_list.append(m)
+    
+    return tc_list[:7]
+
+
+def extract_all_barcodes_from_page4_plus(pages_text):
+    """
+    Extract ALL barcodes (13 digits) ONLY from PAGE 4 and onwards.
+    Pages 1, 2, 3 are SKIPPED completely.
+    Returns max 7 unique barcodes.
+    """
+    barcode_list = []
+    
+    if len(pages_text) >= 4:
+        for i in range(3, len(pages_text)):
+            page_text = pages_text[i]
+            barcodes_on_page = re.findall(r"\b\d{13}\b", page_text)
+            barcode_list.extend(barcodes_on_page)
+    
+    unique_barcodes = []
+    for b in barcode_list:
+        if b not in unique_barcodes:
+            unique_barcodes.append(b)
+    
+    return unique_barcodes[:7]
 
 
 def extract_product_name(text):
@@ -155,34 +187,6 @@ def extract_product_name(text):
     if not m:
         m = re.search(r"Product\s*name\s*[:.]?\s*(.+)", text, re.IGNORECASE)
     return m.group(1).strip() if m else ""
-
-
-def extract_all_barcodes_from_page4_plus(pages_text):
-    """
-    Extract ALL barcodes (13 digits) ONLY from PAGE 4 and onwards.
-    Pages 1, 2, 3 are SKIPPED.
-    Returns max 7 unique barcodes.
-    """
-    barcode_list = []
-    
-    # Start from page 4 (index 3) onwards
-    if len(pages_text) >= 4:
-        for i in range(3, len(pages_text)):  # index 3 = page 4
-            page_text = pages_text[i]
-            barcodes_on_page = re.findall(r"\b\d{13}\b", page_text)
-            barcode_list.extend(barcodes_on_page)
-    else:
-        st.warning("⚠️ PDF has less than 4 pages. Barcode extraction from page 4+ not possible.")
-        return []
-    
-    # Remove duplicates while preserving order
-    unique_barcodes = []
-    for b in barcode_list:
-        if b not in unique_barcodes:
-            unique_barcodes.append(b)
-    
-    # Return first 7 unique barcodes
-    return unique_barcodes[:7]
 
 
 def extract_inner_kg(text):
@@ -214,104 +218,46 @@ def extract_outer_qty(text):
         r"(\d+)\s*X\s*INNER\s*OUTER",
         r"OUTER\s*QTY\s*[:.]?\s*(\d+)"
     ]
-
+    
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             return f"{m.group(1)} Inner"
-
+    
     return ""
 
 
-# ================================================================
-#  HELPER FUNCTIONS
-# ================================================================
-
-# ---------- Item_name_EN cleaning ----------
 def clean_item_name_english(name: str) -> str:
-    """
-    Item_name_EN থেকে prefix গুলো বাদ দিয়ে বাকি অংশ CAPITAL LETTERS এ রিটার্ন করবে।
-    """
+    """Clean Item_name_EN by removing prefixes."""
     if not isinstance(name, str):
         return ""
-
+    
     text = name.strip()
     lower = text.lower()
-
-    prefixes = [
-        "xxxxx",
-        "xxxxx",
-        "xxxxx",
-        "xxxxx",
-        "xxxxx",
-        "xxxxx",
-        "xxxxx",
-        "xxxxx",
-    ]
-
+    
+    prefixes = ["xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx"]
+    
     for p in prefixes:
         if lower.startswith(p):
             cut_len = len(p)
             text = text[cut_len:].strip(" -_,./").strip()
             break
-
+    
     return text.upper()
 
 
-# ================================================================
-# PART 2 — PDF EXTRACTION + COLOUR SYSTEM + NEW EXTRACTIONS
-# ================================================================
-
-# ================================================================
-#  COLOUR EXTRACTION (multiple PDF layout compatible)
-# ================================================================
-def extract_colour_from_page2(text, page_number=1):
-    """Old function: Extract colour from page2."""
-    try:
-        m = re.search(
-            r"Colour[^\n]*?\n\s*([A-Za-z]+)\s+([0-9]{2}-[0-9]{4}[A-Za-z]*)",
-            text,
-            re.IGNORECASE
-        )
-        if m:
-            colour_name = m.group(1).strip().upper()
-            pantone = m.group(2).strip().upper()
-            return f"{colour_name} {pantone}"
-        return "UNKNOWN"
-    except Exception:
-        return "UNKNOWN"
-
-
 def extract_colour_from_pdf_pages(pages_text):
-    """
-    Ultra-robust PEPCO Colour Detection
-    Supports:
-        ✔ Old 6-page PDF format
-        ✔ New 5-page PDF format
-        ✔ Broken layout (Colour row + size row merged)
-        ✔ Missing pantone
-    """
-    # -------- 1️⃣ Standard Colour Table --------
+    """Extract colour from PDF pages."""
     for txt in pages_text:
-        m = re.search(
-            r"Colour.*?\n.*?\n\s*([A-Za-z ]+)\s+[0-9]{2}-[0-9]{4}",
-            txt,
-            re.IGNORECASE | re.DOTALL
-        )
+        m = re.search(r"Colour.*?\n.*?\n\s*([A-Za-z ]+)\s+[0-9]{2}-[0-9]{4}", txt, re.IGNORECASE | re.DOTALL)
         if m:
             return m.group(1).strip().upper()
-
-    # -------- 2️⃣ Purchase Price block --------
+    
     for txt in pages_text:
-        m2 = re.search(
-            r"Purchase price.*?\n\s*([A-Za-z ]+)\s+[0-9]{2}-[0-9]{4}",
-            txt,
-            re.IGNORECASE | re.DOTALL
-        )
+        m2 = re.search(r"Purchase price.*?\n\s*([A-Za-z ]+)\s+[0-9]{2}-[0-9]{4}", txt, re.IGNORECASE | re.DOTALL)
         if m2:
             return m2.group(1).strip().upper()
-
-    # -------- 3️⃣ Generic fallback using "colour" keyword --------
+    
     for txt in pages_text:
         if "colour" in txt.lower():
             for line in txt.splitlines():
@@ -319,16 +265,12 @@ def extract_colour_from_pdf_pages(pages_text):
                     name = line.split()[0:-1]
                     if name:
                         return " ".join(name).upper()
-
-    # -------- 4️⃣ Manual input fallback --------
+    
     st.warning("⚠️ Colour not found in PDF. Enter colour manually:")
     manual = st.text_input("Colour (e.g. WHITE):", key="manual_colour_fix")
     return manual.strip().upper() if manual else "UNKNOWN"
 
 
-# ================================================================
-#  EXTRACT ORDER ID FROM PDF (for multiple uploads)
-# ================================================================
 def extract_order_id_only(file):
     """Extract only Order ID from a PDF file."""
     pos = None
@@ -336,12 +278,12 @@ def extract_order_id_only(file):
         pos = file.tell()
     except Exception:
         pass
-
+    
     try:
         file.seek(0)
     except Exception:
         pass
-
+    
     try:
         with fitz.open(stream=file.read(), filetype="pdf") as doc:
             page1_text = doc[0].get_text() if len(doc) > 0 else ""
@@ -351,130 +293,73 @@ def extract_order_id_only(file):
         except Exception:
             pass
         return None
-
+    
     try:
         file.seek(0 if pos is None else pos)
     except Exception:
         pass
-
-    m = re.search(
-        r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_+-]+)",
-        page1_text,
-        re.IGNORECASE
-    )
+    
+    m = re.search(r"Order\s*-\s*ID\s*\.{2,}\s*([A-Z0-9_+-]+)", page1_text, re.IGNORECASE)
     return m.group(1).strip() if m else None
 
 
 # ================================================================
-#  NEW EXTRACTION FUNCTIONS (MULTIPLE VALUES)
-# ================================================================
-
-def extract_all_tc_numbers(text):
-    """Extract ALL TC numbers from PDF text (max 7)."""
-    tc_list = []
-    
-    # Pattern for TC numbers
-    patterns = [
-        r"TC\s*-\s*(T\d+)",
-        r"TC\s*[:.]?\s*(T\d+)"
-    ]
-    
-    for pattern in patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        for m in matches:
-            if m not in tc_list:
-                tc_list.append(m)
-    
-    # Return first 7 unique TC numbers
-    return tc_list[:7]
-
-
-def extract_all_barcodes(text):
-    """Extract ALL barcodes (13 digits) from PDF text (max 7)."""
-    barcode_list = re.findall(r"\b\d{13}\b", text)
-    
-    # Remove duplicates while preserving order
-    unique_barcodes = []
-    for b in barcode_list:
-        if b not in unique_barcodes:
-            unique_barcodes.append(b)
-    
-    # Return first 7 unique barcodes
-    return unique_barcodes[:7]
-
-
-# ================================================================
-#  MODIFIED MAIN EXTRACTION FUNCTION
+#  MAIN PDF EXTRACTION ENGINE
 # ================================================================
 
 def extract_data_from_pdf(file):
-    """Robust PEPCO extractor with multiple TC and Barcode support."""
+    """Main PDF extractor with all fields."""
     try:
         raw = file.read()
         if not raw:
             st.error("Empty PDF uploaded.")
             return None
-
+        
         doc = fitz.open(stream=raw, filetype="pdf")
-
+        
         if len(doc) < 1:
             st.error("PDF must have at least 1 page.")
             return None
-
+        
         pages_text = [doc[i].get_text() for i in range(len(doc))]
         full_text = "\n".join(pages_text)
         page1 = pages_text[0]
-
-        # ---------------- EXTRACT ALL TC NUMBERS ----------------
-        all_tc_numbers = extract_all_tc_numbers(full_text)
         
-        # ---------------- EXTRACT ALL BARCODES ----------------
-        all_barcodes = extract_all_barcodes(full_text)
+        # Extract from page 4 onwards
+        all_tc_numbers = extract_all_tc_numbers_from_page4_plus(pages_text)
+        all_barcodes = extract_all_barcodes_from_page4_plus(pages_text)
         
-        # ---------------- EXTRACT SINGLE VALUES ----------------
+        # Extract other fields
         product_name = extract_product_name(full_text)
         inner_kg = extract_inner_kg(full_text)
         season_st = extract_season(full_text)
         inner_qty = extract_inner_qty(full_text)
         outer_qty = extract_outer_qty(full_text)
-
-        # ---------------- Item Name EN ----------------
+        
+        # Item Name EN
         item_name_en = None
-
-        m_item = re.search(
-            r"Item\s*name\s*English\s*[:\.]{1,}\s*(.+)",
-            full_text,
-            re.IGNORECASE
-        )
+        m_item = re.search(r"Item\s*name\s*English\s*[:\.]{1,}\s*(.+)", full_text, re.IGNORECASE)
         if not m_item:
-            m_item = re.search(
-                r"Item\s*name\s*[:\.]{1,}\s*(.+?)\n",
-                full_text,
-                re.IGNORECASE
-            )
+            m_item = re.search(r"Item\s*name\s*[:\.]{1,}\s*(.+?)\n", full_text, re.IGNORECASE)
         if m_item:
             item_name_en = m_item.group(1).strip()
-
-        # ---------------- Identifiers ----------------
-        merch_code = re.search(r"Merch\s*code\s*\.{2,}\s*([\w/]+)", page1)
-        season = re.search(r"Season\s*\.{2,}\s*(\w+)?\s*(\d{2})", page1)
+        
+        # Identifiers
         style_code = re.search(r"\b\d{6}\b", page1)
-
         order_id = re.search(r"Order\s*-\s*ID\s*\.{2,}\s*(.+)", page1)
         item_class = re.search(r"Item classification\s*\.{2,}\s*(.+)", page1)
         supplier_code = re.search(r"Supplier product code\s*\.{2,}\s*(.+)", page1)
         supplier_name = re.search(r"Supplier name\s*\.{2,}\s*(.+)", page1)
-
+        season = re.search(r"Season\s*\.{2,}\s*(\w+)?\s*(\d{2})", page1)
+        
         item_class_value = item_class.group(1).strip() if item_class else "UNKNOWN"
-
-        # ---------------- AUTO COLOUR EXTRACTION ----------------
         colour = extract_colour_from_pdf_pages(pages_text)
-
-        # ---------------- SKU extraction (FOR FILENAME) ----------------
+        
+        # SKU extraction for filename
         skus = []
         for txt in pages_text:
             skus.extend(re.findall(r"\b\d{8}\b", txt))
-
+        
         def _dedupe(seq):
             seen = set()
             out = []
@@ -483,21 +368,17 @@ def extract_data_from_pdf(file):
                     seen.add(x)
                     out.append(x)
             return out
-
+        
         skus = _dedupe(skus)
-
+        
         if not skus:
             st.error("SKU missing from PDF.")
             return None
-
+        
         sku_for_filename = "_".join(skus) if skus else "UNKNOWN"
-
-        season_value = (
-            f"{season.group(1)}{season.group(2)}"
-            if season else "UNKNOWN"
-        )
-
-        # ---------------- BUILD RESULT WITH MULTIPLE TC & BARCODE ----------------
+        season_value = f"{season.group(1)}{season.group(2)}" if season else "UNKNOWN"
+        
+        # Build results
         results = []
         for sku in skus:
             row_data = {
@@ -521,91 +402,69 @@ def extract_data_from_pdf(file):
             # Add TC numbers (st1 to st7)
             for i in range(7):
                 col_name = f"TC_Number_st{i+1}"
-                if i < len(all_tc_numbers):
-                    row_data[col_name] = all_tc_numbers[i]
-                else:
-                    row_data[col_name] = ""
+                row_data[col_name] = all_tc_numbers[i] if i < len(all_tc_numbers) else ""
             
             # Add Barcodes (st1 to st7)
             for i in range(7):
                 col_name = f"Barcode_st{i+1}"
-                if i < len(all_barcodes):
-                    row_data[col_name] = all_barcodes[i]
-                else:
-                    row_data[col_name] = ""
+                row_data[col_name] = all_barcodes[i] if i < len(all_barcodes) else ""
             
             results.append(row_data)
-
+        
         return results
-
+    
     except Exception as e:
         st.error(f"PDF error: {str(e)}")
         return None
 
 
 # ================================================================
-#  UPDATED PROCESS FUNCTION (DYNAMIC COLUMNS)
+#  MAIN PROCESSOR FUNCTION
 # ================================================================
 
 def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
-    """Main pipeline: parse PDF, build DF with dynamic columns, export CSV."""
+    """Main pipeline: parse PDF, build DF, export CSV."""
     
     if not uploaded_pdf:
         return
-
+    
     result_data = extract_data_from_pdf(uploaded_pdf)
     if not result_data:
         return
-
+    
     df = pd.DataFrame(result_data)
-
+    
     # Get SKU for filename
     sku_for_filename = df['_temp_sku_for_filename'].iloc[0] if '_temp_sku_for_filename' in df.columns else "UNKNOWN"
     
     if '_temp_sku_for_filename' in df.columns:
         df = df.drop(columns=['_temp_sku_for_filename'])
-
-    first_row = result_data[0] if len(result_data) > 0 else {}
-    pdf_item_name_en = (first_row.get("Item_name_EN") or "").strip()
-
+    
+    # Merge extra Order IDs
     if extra_order_ids:
         try:
             df['Order_ID'] = df['Order_ID'].astype(str) + "+" + extra_order_ids
         except Exception:
             pass
-
+    
     # Clean Item_name_English
     df["Item_name_English"] = df["Item_name_EN"].apply(clean_item_name_english)
-
-    # ============================================================
-    #  DYNAMIC FINAL COLUMNS
-    # ============================================================
     
-    # Base columns
+    # Dynamic final columns
     final_cols = [
-        "Order_ID",
-        "Style",
-        "Colour",
-        "Supplier_product_code",
-        "Item_classification",
-        "Supplier_name",
-        "today_date",
-        "Item_name_English",
-        "Season",
-        "Product_name",
-        "Inner_kg",
-        "Season_st",
-        "Inner_qty",
-        "Outer_qty"
+        "Order_ID", "Style", "Colour", "Supplier_product_code",
+        "Item_classification", "Supplier_name", "today_date",
+        "Item_name_English", "Season", "Product_name", "Inner_kg",
+        "Season_st", "Inner_qty", "Outer_qty"
     ]
     
-    # Add TC Number columns (st1 to st7) - only if they exist in dataframe
+    # Add TC Number columns
     tc_cols = [f"TC_Number_st{i+1}" for i in range(7)]
     for col in tc_cols:
         if col in df.columns:
             final_cols.append(col)
     
-    # Add Barcode columns (st1 to st7) - only if they exist in dataframe
+    # Add Barcode columns
     barcode_cols = [f"Barcode_st{i+1}" for i in range(7)]
     for col in barcode_cols:
         if col in df.columns:
@@ -615,36 +474,28 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     for col in final_cols:
         if col not in df.columns:
             df[col] = ""
-
+    
     st.success("✅ Done!")
     st.subheader("Edit Before Download")
-
+    
     edited_df = st.data_editor(df[final_cols])
-
+    
     # Build CSV
     csv_buffer = StringIO()
-    writer = pycsv.writer(
-        csv_buffer,
-        delimiter=';',
-        quoting=pycsv.QUOTE_ALL
-    )
+    writer = pycsv.writer(csv_buffer, delimiter=';', quoting=pycsv.QUOTE_ALL)
     writer.writerow(final_cols)
-
+    
     for row in edited_df.itertuples(index=False):
         writer.writerow(row)
-
-    # Filename
+    
+    # Generate filename
     first_row_df = df.iloc[0]
     season_val = first_row_df.get("Season", "UNKNOWN").upper()
-    sku_val = sku_for_filename
     supplier_code = first_row_df.get("Supplier_product_code", "UNKNOWN")
     style_val = first_row_df.get("Style", "UNKNOWN")
-
-    custom_filename = (
-        f"PEPCO_{season_val}_{sku_val}_Sticker "
-        f"{supplier_code}_00_{style_val}.csv"
-    )
-
+    
+    custom_filename = f"PEPCO_{season_val}_{sku_for_filename}_Sticker {supplier_code}_00_{style_val}.csv"
+    
     st.download_button(
         "📥 Download CSV",
         csv_buffer.getvalue().encode('utf-8-sig'),
@@ -654,63 +505,57 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
 
 
 # ================================================================
-#  PEPCO SECTION (Uploader + Reset)
+#  PEPCO SECTION
 # ================================================================
-def pepco_section():
-    """Main PEPCO UI section (upload + reset + extra order IDs merge)."""
-    st.subheader("PEPCO Data Processing")
 
-    # One-time init for uploader key
+def pepco_section():
+    """Main PEPCO UI section."""
+    st.subheader("PEPCO Data Processing")
+    
     if "uploader_key" not in st.session_state:
         st.session_state.uploader_key = 0
-
+    
     cols = st.columns([1, 6])
-
-    # Reset / new upload button
+    
     with cols[0]:
         def _reset_all():
-            # Clear only app-related session keys
             for k in list(st.session_state.keys()):
-                if k.startswith(("ui_", "mat_", "pepco_", "colour_", "colour_manual_", "colour_missing_")):
+                if k.startswith(("ui_", "pepco_", "colour_")):
                     st.session_state.pop(k, None)
-
-            # Force uploader refresh
             st.session_state.uploader_key += 1
-
+        
         st.button("🆕 Upload New File", on_click=_reset_all)
-
-    # File uploader (multi PDF)
+    
     uploaded_pdfs = st.file_uploader(
         "Upload PEPCO Data file",
         type=["pdf"],
         key=f"pepco_uploader_{st.session_state.uploader_key}",
         accept_multiple_files=True
     )
-
+    
     if uploaded_pdfs:
         if not isinstance(uploaded_pdfs, list):
             uploaded_pdfs = [uploaded_pdfs]
-
+        
         primary_pdf = uploaded_pdfs[0]
         others = uploaded_pdfs[1:]
-
-        # Collect Order_ID from additional PDFs
+        
         other_ids = []
         for f in others:
             try:
                 f.seek(0)
             except Exception:
                 pass
-
+            
             oid = extract_order_id_only(f)
             if oid:
                 other_ids.append(oid)
-
+            
             try:
                 f.seek(0)
             except Exception:
                 pass
-
+        
         concatenated_ids = "+".join(other_ids) if other_ids else ""
         process_pepco_pdf(primary_pdf, extra_order_ids=concatenated_ids)
 
@@ -718,6 +563,7 @@ def pepco_section():
 # ================================================================
 #  HEADER RENDER
 # ================================================================
+
 def render_header():
     """Render logo or fallback icon."""
     left, _ = st.columns([3, 10], vertical_alignment="center")
@@ -727,36 +573,25 @@ def render_header():
         elif os.path.exists(LOGO_PNG):
             st.image(LOGO_PNG, width=300)
         else:
-            st.markdown(
-                "<div style='font-size:40px'>🏷️</div>",
-                unsafe_allow_html=True
-            )
+            st.markdown("<div style='font-size:40px'>🏷️</div>", unsafe_allow_html=True)
 
 
 # ================================================================
 #  MAIN APP
 # ================================================================
-def main():
-    # Apply theme
-    st.markdown(THEME_CSS, unsafe_allow_html=True)
 
-    # Header + Title
+def main():
+    st.markdown(THEME_CSS, unsafe_allow_html=True)
     render_header()
     st.title("PEPCO Automation App")
-
-    # Password gate
+    
     if not check_password():
         st.stop()
-
-    # Main content
+    
     pepco_section()
-
     st.markdown("---")
     st.caption("This app developed by Ovi")
 
 
-# ================================================================
-#  ENTRY POINT
-# ================================================================
 if __name__ == "__main__":
     main()
