@@ -346,7 +346,7 @@ def extract_data_from_pdf(file):
         all_tc_numbers = extract_all_tc_numbers_from_page4_plus(pages_text)
         all_barcodes = extract_all_barcodes_from_page4_plus(pages_text)
         
-        # Extract other fields
+        # Extract other fields (ONLY from page 4+)
         product_name = extract_product_name_from_page4_plus(pages_text)
         inner_kg = extract_inner_kg_from_page4_plus(pages_text)
         season_st = extract_season_from_page4_plus(pages_text)
