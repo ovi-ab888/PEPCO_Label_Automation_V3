@@ -380,36 +380,36 @@ def extract_data_from_pdf(file):
         
         # Build results
         results = []
-        for sku in skus:
-            row_data = {
-                "Order_ID": order_id.group(1).strip() if order_id else "UNKNOWN",
-                "Style": style_code.group() if style_code else "UNKNOWN",
-                "Colour": colour,
-                "Supplier_product_code": supplier_code.group(1).strip() if supplier_code else "UNKNOWN",
-                "Item_classification": item_class_value,
-                "Supplier_name": supplier_name.group(1).strip() if supplier_name else "UNKNOWN",
-                "today_date": datetime.today().strftime('%d-%m-%Y'),
-                "Item_name_EN": item_name_en or "",
-                "Season": season_value,
-                "Product_name": product_name,
-                "Inner_kg": inner_kg,
-                "Season_st": season_st,
-                "Inner_qty": inner_qty,
-                "Outer_qty": outer_qty,
-                "_temp_sku_for_filename": sku_for_filename
-            }
-            
-            # Add TC numbers (st1 to st7)
-            for i in range(7):
-                col_name = f"TC_Number_st{i+1}"
-                row_data[col_name] = all_tc_numbers[i] if i < len(all_tc_numbers) else ""
-            
-            # Add Barcodes (st1 to st7)
-            for i in range(7):
-                col_name = f"Barcode_st{i+1}"
-                row_data[col_name] = all_barcodes[i] if i < len(all_barcodes) else ""
-            
-            results.append(row_data)
+        # shudhu 1 ta row create hobe (SKU count ignore)
+        row_data = {
+            "Order_ID": order_id.group(1).strip() if order_id else "UNKNOWN",
+            "Style": style_code.group() if style_code else "UNKNOWN",
+            "Colour": colour,
+            "Supplier_product_code": supplier_code.group(1).strip() if supplier_code else "UNKNOWN",
+            "Item_classification": item_class_value,
+            "Supplier_name": supplier_name.group(1).strip() if supplier_name else "UNKNOWN",
+            "today_date": datetime.today().strftime('%d-%m-%Y'),
+            "Item_name_EN": item_name_en or "",
+            "Season": season_value,
+            "Product_name": product_name,
+            "Inner_kg": inner_kg,
+            "Season_st": season_st,
+            "Inner_qty": inner_qty,
+            "Outer_qty": outer_qty,
+            "_temp_sku_for_filename": sku_for_filename
+        }
+        
+        # Add TC numbers (st1 to st7)
+        for i in range(7):
+            col_name = f"TC_Number_st{i+1}"
+            row_data[col_name] = all_tc_numbers[i] if i < len(all_tc_numbers) else ""
+        
+        # Add Barcodes (st1 to st7)
+        for i in range(7):
+            col_name = f"Barcode_st{i+1}"
+            row_data[col_name] = all_barcodes[i] if i < len(all_barcodes) else ""
+        
+        results.append(row_data)
         
         return results
     
