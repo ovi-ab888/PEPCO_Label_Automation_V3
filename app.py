@@ -181,49 +181,66 @@ def extract_all_barcodes_from_page4_plus(pages_text):
     return unique_barcodes[:7]
 
 
-def extract_product_name(text):
-    """Extract product name from PDF text."""
-    m = re.search(r"ITEM\s*\d+\s*\n\s*(.+)", text, re.IGNORECASE)
-    if not m:
-        m = re.search(r"Product\s*name\s*[:.]?\s*(.+)", text, re.IGNORECASE)
-    return m.group(1).strip() if m else ""
+def extract_product_name_from_page4_plus(pages_text):
+    """Extract product name ONLY from PAGE 4 and onwards."""
+    if len(pages_text) >= 4:
+        for i in range(3, len(pages_text)):
+            text = pages_text[i]
+            m = re.search(r"ITEM\s*\d+\s*\n\s*(.+)", text, re.IGNORECASE)
+            if not m:
+                m = re.search(r"Product\s*name\s*[:.]?\s*(.+)", text, re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+    return ""
 
+def extract_inner_kg_from_page4_plus(pages_text):
+    """Extract inner kg ONLY from PAGE 4 and onwards."""
+    if len(pages_text) >= 4:
+        for i in range(3, len(pages_text)):
+            text = pages_text[i]
+            m = re.search(r"MAX\.?\s*(\d+)\s*kg", text, re.IGNORECASE)
+            if not m:
+                m = re.search(r"(\d+)\s*kg", text, re.IGNORECASE)
+            if m:
+                return f"MAX. {m.group(1)} kg"
+    return ""
 
-def extract_inner_kg(text):
-    """Extract inner kg from PDF text."""
-    m = re.search(r"MAX\.?\s*(\d+)\s*kg", text, re.IGNORECASE)
-    if not m:
-        m = re.search(r"(\d+)\s*kg", text, re.IGNORECASE)
-    return f"MAX. {m.group(1)} kg" if m else ""
+def extract_season_from_page4_plus(pages_text):
+    """Extract season code ONLY from PAGE 4 and onwards."""
+    if len(pages_text) >= 4:
+        for i in range(3, len(pages_text)):
+            text = pages_text[i]
+            m = re.search(r"\b(AW|SS|FW|SW)\d{2}\b", text, re.IGNORECASE)
+            if m:
+                return m.group(0).upper()
+    return ""
 
+def extract_inner_qty_from_page4_plus(pages_text):
+    """Extract inner quantity ONLY from PAGE 4 and onwards."""
+    if len(pages_text) >= 4:
+        for i in range(3, len(pages_text)):
+            text = pages_text[i]
+            m = re.search(r"(\d+)\s*Pcs", text, re.IGNORECASE)
+            if m:
+                return f"{m.group(1)} Pcs"
+    return ""
 
-def extract_season(text):
-    """Extract season code (AW/SS/FW/SW + year) from PDF text."""
-    m = re.search(r"\b(AW|SS|FW|SW)\d{2}\b", text, re.IGNORECASE)
-    return m.group(0).upper() if m else ""
-
-
-def extract_inner_qty(text):
-    """Extract inner quantity from PDF text."""
-    m = re.search(r"(\d+)\s*Pcs", text, re.IGNORECASE)
-    return f"{m.group(1)} Pcs" if m else ""
-
-
-def extract_outer_qty(text):
-    """Extract outer quantity from PDF text."""
-    patterns = [
-        r"(\d+)\s*Inner\s*OUTER",
-        r"(\d+)\s*OUTER",
-        r"OUTER\s*[:.]?\s*(\d+)",
-        r"(\d+)\s*X\s*INNER\s*OUTER",
-        r"OUTER\s*QTY\s*[:.]?\s*(\d+)"
-    ]
-    
-    for p in patterns:
-        m = re.search(p, text, re.IGNORECASE)
-        if m:
-            return f"{m.group(1)} Inner"
-    
+def extract_outer_qty_from_page4_plus(pages_text):
+    """Extract outer quantity ONLY from PAGE 4 and onwards."""
+    if len(pages_text) >= 4:
+        patterns = [
+            r"(\d+)\s*Inner\s*OUTER",
+            r"(\d+)\s*OUTER",
+            r"OUTER\s*[:.]?\s*(\d+)",
+            r"(\d+)\s*X\s*INNER\s*OUTER",
+            r"OUTER\s*QTY\s*[:.]?\s*(\d+)"
+        ]
+        for i in range(3, len(pages_text)):
+            text = pages_text[i]
+            for p in patterns:
+                m = re.search(p, text, re.IGNORECASE)
+                if m:
+                    return f"{m.group(1)} Inner"
     return ""
 
 
@@ -330,11 +347,11 @@ def extract_data_from_pdf(file):
         all_barcodes = extract_all_barcodes_from_page4_plus(pages_text)
         
         # Extract other fields
-        product_name = extract_product_name(full_text)
-        inner_kg = extract_inner_kg(full_text)
-        season_st = extract_season(full_text)
-        inner_qty = extract_inner_qty(full_text)
-        outer_qty = extract_outer_qty(full_text)
+        product_name = extract_product_name_from_page4_plus(pages_text)
+        inner_kg = extract_inner_kg_from_page4_plus(pages_text)
+        season_st = extract_season_from_page4_plus(pages_text)
+        inner_qty = extract_inner_qty_from_page4_plus(pages_text)
+        outer_qty = extract_outer_qty_from_page4_plus(pages_text)
         
         # Item Name EN
         item_name_en = None
