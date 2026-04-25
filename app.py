@@ -193,6 +193,7 @@ def extract_product_name_from_page4_plus(pages_text):
                 return m.group(1).strip()
     return ""
 
+
 def extract_inner_kg_from_page4_plus(pages_text):
     """Extract inner kg ONLY from PAGE 4 and onwards."""
     if len(pages_text) >= 4:
@@ -205,6 +206,7 @@ def extract_inner_kg_from_page4_plus(pages_text):
                 return f"MAX. {m.group(1)} kg"
     return ""
 
+
 def extract_season_from_page4_plus(pages_text):
     """Extract season code ONLY from PAGE 4 and onwards."""
     if len(pages_text) >= 4:
@@ -215,6 +217,7 @@ def extract_season_from_page4_plus(pages_text):
                 return m.group(0).upper()
     return ""
 
+
 def extract_inner_qty_from_page4_plus(pages_text):
     """Extract inner quantity ONLY from PAGE 4 and onwards."""
     if len(pages_text) >= 4:
@@ -224,6 +227,7 @@ def extract_inner_qty_from_page4_plus(pages_text):
             if m:
                 return f"{m.group(1)} Pcs"
     return ""
+
 
 def extract_outer_qty_from_page4_plus(pages_text):
     """Extract outer quantity ONLY from PAGE 4 and onwards."""
@@ -242,7 +246,6 @@ def extract_outer_qty_from_page4_plus(pages_text):
                 if m:
                     return f"{m.group(1)} Inner"
     return ""
-
 
 def clean_item_name_english(name: str) -> str:
     """Clean Item_name_EN by removing prefixes."""
