@@ -5,7 +5,7 @@
 # ---------- PAGE CONFIG (must be at top) ----------
 import streamlit as st
 st.set_page_config(
-    page_title="PEPCO",
+    page_title="PEPCO SL",
     page_icon="🧾",
     layout="wide"
 )
