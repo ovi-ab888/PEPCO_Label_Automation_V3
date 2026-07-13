@@ -359,11 +359,10 @@ def extract_pictogram_from_page1(page1_text):
     Extract pictogram code from Page 1 and apply mapping.
     Example: "Pictogram no PIC00030" -> "m"
     """
-    # আপনার কোডের স্টাইল অনুযায়ী
-    m = re.search(r"Pictogram\s*no\s*(PIC\d+)", page1_text, re.IGNORECASE)
+    # Item classification এর মতো স্টাইলে
+    m = re.search(r"Pictogram\s*no\s*\.{0,2}\s*(\w+)", page1_text, re.IGNORECASE)
     if m:
         pictogram_code = m.group(1).strip().upper()
-        # Apply mapping
         return PICTOGRAM_MAPPING.get(pictogram_code, "")
     return ""
 
@@ -373,11 +372,10 @@ def extract_promotional_from_page1(page1_text):
     Extract promotional code from Page 1 and apply mapping.
     Example: "Promotional product PROMO" -> "p"
     """
-    # আপনার কোডের স্টাইল অনুযায়ী - Item classification এর মতো
+    # Item classification এর মতো স্টাইলে
     m = re.search(r"Promotional\s*product\s*\.{0,2}\s*(\w+)", page1_text, re.IGNORECASE)
     if m:
         promo_code = m.group(1).strip().upper()
-        # Apply mapping
         return PROMOTIONAL_MAPPING.get(promo_code, "")
     return ""
 
