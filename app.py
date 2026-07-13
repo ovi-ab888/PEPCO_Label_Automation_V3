@@ -387,17 +387,17 @@ def extract_data_from_pdf(file):
         # Pictogram
         # --------------------------------------------------
         pictogram = ""
-        m = re.search(r"Pictogram\s*no\s*\.{2,}\s*([A-Z0-9]+)", page1, re.IGNORECASE)
+        m = re.search(r"Pictogram\s*no.*?([A-Z]{3}\d{5})", page1, re.IGNORECASE)
         if m:
-            pictogram = PICTOGRAM_MAPPING.get(m.group(1).strip().upper(), "")
+            pictogram = PICTOGRAM_MAPPING.get(m.group(1).upper(), "")
         
         # --------------------------------------------------
         # Promotional
         # --------------------------------------------------
         promotional = ""
-        m = re.search(r"Promotional\s*product\s*\.{2,}\s*([A-Z0-9]+)", page1, re.IGNORECASE)
+        m = re.search(r"Promotional\s*product.*?([A-Z]+)", page1, re.IGNORECASE)
         if m:
-            promotional = PROMOTIONAL_MAPPING.get(m.group(1).strip().upper(), "")
+            promotional = PROMOTIONAL_MAPPING.get(m.group(1).upper(), "")
         
         # Item Name EN
         item_name_en = None
