@@ -399,13 +399,20 @@ def extract_data_from_pdf(file):
         # Promotional
         # --------------------------------------------------
         promotional = ""
+
         m = re.search(
-            r"Promotional\s*product.*?(PROMO|KVI|HS)",
+            r"Promotional\s*product.*?(NON\s+PROMO|PROMO|KVI|HS)\b",
             page1,
             re.IGNORECASE | re.DOTALL
         )
+
         if m:
-            promotional = PROMOTIONAL_MAPPING.get(m.group(1).upper(), "")
+            value = re.sub(r"\s+", " ", m.group(1).strip()).upper()
+
+            if value == "NON PROMO":
+                promotional = ""
+            else:
+                promotional = PROMOTIONAL_MAPPING.get(value, "")
         
         # Item Name EN
         item_name_en = None
