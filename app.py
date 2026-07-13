@@ -21,6 +21,32 @@ import os
 
 
 # ================================================================
+#  MAPPING DICTIONARIES
+# ================================================================
+
+PICTOGRAM_MAPPING = {
+    "PIC00033": "a",
+    "PIC00034": "f",
+    "PIC00032": "c",
+    "PIC00181": "g",
+    "PIC00030": "m",
+    "PIC00183": "v",
+    "PIC00182": "i",
+    "PIC00031": "e",
+    "PIC00028": "t",
+    "PIC00185": "o",
+    "PIC00027": "p",
+    "PIC00029": "r"
+}
+
+PROMOTIONAL_MAPPING = {
+    "PROMO": "p",
+    "KVI": "K",
+    "HS": "H"
+}
+
+
+# ================================================================
 #  LOGO & THEME
 # ================================================================
 LOGO_PNG = "logo.png"
@@ -247,6 +273,7 @@ def extract_outer_qty_from_page4_plus(pages_text):
                     return f"{m.group(1)} Inner"
     return ""
 
+
 def clean_item_name_english(name: str) -> str:
     """Clean Item_name_EN by removing prefixes."""
     if not isinstance(name, str):
@@ -324,6 +351,36 @@ def extract_order_id_only(file):
 
 
 # ================================================================
+#  NEW EXTRACTION FUNCTIONS FOR PICTOGRAM AND PROMOTIONAL
+# ================================================================
+
+def extract_pictogram_from_page1(page1_text):
+    """
+    Extract pictogram code from Page 1 and apply mapping.
+    Example: "Pictogram no PIC00030" -> "m"
+    """
+    m = re.search(r"Pictogram\s*no\s*(PIC\d+)", page1_text, re.IGNORECASE)
+    if m:
+        pictogram_code = m.group(1).upper()
+        # Apply mapping
+        return PICTOGRAM_MAPPING.get(pictogram_code, "")
+    return ""
+
+
+def extract_promotional_from_page1(page1_text):
+    """
+    Extract promotional code from Page 1 and apply mapping.
+    Example: "Promotional product PROMO" -> "p"
+    """
+    m = re.search(r"Promotional\s*product\s*(\w+)", page1_text, re.IGNORECASE)
+    if m:
+        promo_code = m.group(1).upper()
+        # Apply mapping
+        return PROMOTIONAL_MAPPING.get(promo_code, "")
+    return ""
+
+
+# ================================================================
 #  MAIN PDF EXTRACTION ENGINE
 # ================================================================
 
@@ -355,6 +412,10 @@ def extract_data_from_pdf(file):
         season_st = extract_season_from_page4_plus(pages_text)
         inner_qty = extract_inner_qty_from_page4_plus(pages_text)
         outer_qty = extract_outer_qty_from_page4_plus(pages_text)
+        
+        # Extract Pictogram and Promotional from Page 1
+        pictogram = extract_pictogram_from_page1(page1)
+        promotional = extract_promotional_from_page1(page1)
         
         # Item Name EN
         item_name_en = None
@@ -400,7 +461,6 @@ def extract_data_from_pdf(file):
         
         # Build results
         results = []
-        # shudhu 1 ta row create hobe (SKU count ignore)
         row_data = {
             "Order_ID": order_id.group(1).strip() if order_id else "UNKNOWN",
             "Style": style_code.group() if style_code else "UNKNOWN",
@@ -416,6 +476,8 @@ def extract_data_from_pdf(file):
             "Season_st": season_st,
             "Inner_qty": inner_qty,
             "Outer_qty": outer_qty,
+            "Pictogram": pictogram,
+            "Promotional": promotional,
             "_temp_sku_for_filename": sku_for_filename
         }
         
@@ -470,12 +532,13 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     # Clean Item_name_English
     df["Item_name_English"] = df["Item_name_EN"].apply(clean_item_name_english)
     
-    # Dynamic final columns
+    # Dynamic final columns with Pictogram and Promotional
     final_cols = [
         "Order_ID", "Style", "Colour", "Supplier_product_code",
         "Item_classification", "Supplier_name", "today_date",
         "Item_name_English", "Season", "Product_name", "Inner_kg",
-        "Season_st", "Inner_qty", "Outer_qty"
+        "Season_st", "Inner_qty", "Outer_qty",
+        "Pictogram", "Promotional"
     ]
     
     # Add TC Number columns
