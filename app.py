@@ -359,24 +359,17 @@ def extract_pictogram_from_page1(page1_text):
     Extract pictogram code from Page 1 and apply mapping.
     Example: "Pictogram no PIC00030" -> "m"
     """
-    # Multiple patterns try করব
-    patterns = [
-        r"Pictogram\s*no\s*(PIC\d+)",  # "Pictogram no PIC00030"
-        r"Pictogram\s*no\s*\.{0,2}\s*(\w+)",  # "Pictogram no PIC00030"
-        r"Pictogram\s*[:.]?\s*(PIC\d+)",  # "Pictogram: PIC00030"
-    ]
+    # Try different patterns
+    m = re.search(r"Pictogram\s+no\s+(\w+)", page1_text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"Pictogram\s*no\s*(\w+)", page1_text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"Pictogram\s*[:.]?\s*(\w+)", page1_text, re.IGNORECASE)
     
-    for pattern in patterns:
-        m = re.search(pattern, page1_text, re.IGNORECASE)
-        if m:
-            pictogram_code = m.group(1).strip().upper()
-            # Apply mapping
-            mapped_value = PICTOGRAM_MAPPING.get(pictogram_code, "")
-            if mapped_value:
-                return mapped_value
-            # যদি mapping এ না থাকে, তবুও code return করব
-            return pictogram_code
-    
+    if m:
+        pictogram_code = m.group(1).strip().upper()
+        # Apply mapping if exists, else return original code
+        return PICTOGRAM_MAPPING.get(pictogram_code, pictogram_code)
     return ""
 
 
@@ -385,24 +378,17 @@ def extract_promotional_from_page1(page1_text):
     Extract promotional code from Page 1 and apply mapping.
     Example: "Promotional product KVI" -> "K"
     """
-    # Multiple patterns try করব
-    patterns = [
-        r"Promotional\s*product\s*(\w+)",  # "Promotional product KVI"
-        r"Promotional\s*product\s*\.{0,2}\s*(\w+)",  # "Promotional product KVI"
-        r"Promotional\s*[:.]?\s*(\w+)",  # "Promotional: KVI"
-    ]
+    # Try different patterns
+    m = re.search(r"Promotional\s+product\s+(\w+)", page1_text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"Promotional\s*product\s*(\w+)", page1_text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"Promotional\s*[:.]?\s*(\w+)", page1_text, re.IGNORECASE)
     
-    for pattern in patterns:
-        m = re.search(pattern, page1_text, re.IGNORECASE)
-        if m:
-            promo_code = m.group(1).strip().upper()
-            # Apply mapping
-            mapped_value = PROMOTIONAL_MAPPING.get(promo_code, "")
-            if mapped_value:
-                return mapped_value
-            # যদি mapping এ না থাকে, তবুও code return করব
-            return promo_code
-    
+    if m:
+        promo_code = m.group(1).strip().upper()
+        # Apply mapping if exists, else return original code
+        return PROMOTIONAL_MAPPING.get(promo_code, promo_code)
     return ""
 
 # ================================================================
