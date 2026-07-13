@@ -21,7 +21,7 @@ import os
 
 
 # ================================================================
-#  MAPPING DICTIONARIES
+# PICTOGRAM & PROMOTIONAL MAPPING
 # ================================================================
 
 PICTOGRAM_MAPPING = {
@@ -36,13 +36,13 @@ PICTOGRAM_MAPPING = {
     "PIC00028": "t",
     "PIC00185": "o",
     "PIC00027": "p",
-    "PIC00029": "r"
+    "PIC00029": "r",
 }
 
 PROMOTIONAL_MAPPING = {
     "PROMO": "p",
     "KVI": "K",
-    "HS": "H"
+    "HS": "H",
 }
 
 
@@ -351,47 +351,6 @@ def extract_order_id_only(file):
 
 
 # ================================================================
-#  NEW EXTRACTION FUNCTIONS FOR PICTOGRAM AND PROMOTIONAL
-# ================================================================
-
-def extract_pictogram_from_page1(page1_text):
-    """
-    Extract pictogram code from Page 1 and apply mapping.
-    Example: "Pictogram no PIC00030" -> "m"
-    """
-    # Try different patterns
-    m = re.search(r"Pictogram\s+no\s+(\w+)", page1_text, re.IGNORECASE)
-    if not m:
-        m = re.search(r"Pictogram\s*no\s*(\w+)", page1_text, re.IGNORECASE)
-    if not m:
-        m = re.search(r"Pictogram\s*[:.]?\s*(\w+)", page1_text, re.IGNORECASE)
-    
-    if m:
-        pictogram_code = m.group(1).strip().upper()
-        # Apply mapping if exists, else return original code
-        return PICTOGRAM_MAPPING.get(pictogram_code, pictogram_code)
-    return ""
-
-
-def extract_promotional_from_page1(page1_text):
-    """
-    Extract promotional code from Page 1 and apply mapping.
-    Example: "Promotional product KVI" -> "K"
-    """
-    # Try different patterns
-    m = re.search(r"Promotional\s+product\s+(\w+)", page1_text, re.IGNORECASE)
-    if not m:
-        m = re.search(r"Promotional\s*product\s*(\w+)", page1_text, re.IGNORECASE)
-    if not m:
-        m = re.search(r"Promotional\s*[:.]?\s*(\w+)", page1_text, re.IGNORECASE)
-    
-    if m:
-        promo_code = m.group(1).strip().upper()
-        # Apply mapping if exists, else return original code
-        return PROMOTIONAL_MAPPING.get(promo_code, promo_code)
-    return ""
-
-# ================================================================
 #  MAIN PDF EXTRACTION ENGINE
 # ================================================================
 
@@ -424,9 +383,21 @@ def extract_data_from_pdf(file):
         inner_qty = extract_inner_qty_from_page4_plus(pages_text)
         outer_qty = extract_outer_qty_from_page4_plus(pages_text)
         
-        # Extract Pictogram and Promotional from Page 1
-        pictogram = extract_pictogram_from_page1(page1)
-        promotional = extract_promotional_from_page1(page1)
+        # --------------------------------------------------
+        # Pictogram
+        # --------------------------------------------------
+        pictogram = ""
+        m = re.search(r"Pictogram\s*no\s*\.{2,}\s*([A-Z0-9]+)", page1, re.IGNORECASE)
+        if m:
+            pictogram = PICTOGRAM_MAPPING.get(m.group(1).strip().upper(), "")
+        
+        # --------------------------------------------------
+        # Promotional
+        # --------------------------------------------------
+        promotional = ""
+        m = re.search(r"Promotional\s*product\s*\.{2,}\s*([A-Z0-9]+)", page1, re.IGNORECASE)
+        if m:
+            promotional = PROMOTIONAL_MAPPING.get(m.group(1).strip().upper(), "")
         
         # Item Name EN
         item_name_en = None
@@ -482,13 +453,13 @@ def extract_data_from_pdf(file):
             "today_date": datetime.today().strftime('%d-%m-%Y'),
             "Item_name_EN": item_name_en or "",
             "Season": season_value,
+            "Pictogram": pictogram,
+            "Promotional": promotional,
             "Product_name": product_name,
             "Inner_kg": inner_kg,
             "Season_st": season_st,
             "Inner_qty": inner_qty,
             "Outer_qty": outer_qty,
-            "Pictogram": pictogram,
-            "Promotional": promotional,
             "_temp_sku_for_filename": sku_for_filename
         }
         
@@ -545,11 +516,22 @@ def process_pepco_pdf(uploaded_pdf, extra_order_ids: str | None = None):
     
     # Dynamic final columns with Pictogram and Promotional
     final_cols = [
-        "Order_ID", "Style", "Colour", "Supplier_product_code",
-        "Item_classification", "Supplier_name", "today_date",
-        "Item_name_English", "Season", "Product_name", "Inner_kg",
-        "Season_st", "Inner_qty", "Outer_qty",
-        "Pictogram", "Promotional"
+        "Order_ID",
+        "Style",
+        "Colour",
+        "Supplier_product_code",
+        "Item_classification",
+        "Supplier_name",
+        "today_date",
+        "Item_name_English",
+        "Season",
+        "Pictogram",
+        "Promotional",
+        "Product_name",
+        "Inner_kg",
+        "Season_st",
+        "Inner_qty",
+        "Outer_qty"
     ]
     
     # Add TC Number columns
