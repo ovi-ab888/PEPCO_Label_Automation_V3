@@ -410,7 +410,7 @@ def extract_data_from_pdf(file):
         # --------------------------------------------------
         # Promotional
         # --------------------------------------------------
-        promotional = ""
+        promotional = " "
 
         m = re.search(
             r"Promotional\s*product.*?(NON\s+PROMO|PROMO|KVI|HS)\b",
