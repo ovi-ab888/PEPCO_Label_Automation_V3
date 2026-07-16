@@ -52,7 +52,7 @@ PICTOGRAM_MAPPING = {
 }
 
 PROMOTIONAL_MAPPING = {
-    "PROMO": "p",
+    "PROMO": "P",
     "KVI": "K",
     "HS": "H",
 }
