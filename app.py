@@ -473,7 +473,7 @@ def extract_data_from_pdf(file):
         row_data = {
             "Order_ID": order_id.group(1).strip() if order_id else "UNKNOWN",
             "Style": style_code.group() if style_code else "UNKNOWN",
-            "Colour": colour,
+            "Colour": colour.title(),
             "Supplier_product_code": supplier_code.group(1).strip() if supplier_code else "UNKNOWN",
             "Item_classification": item_class_value,
             "Supplier_name": supplier_name.group(1).strip() if supplier_name else "UNKNOWN",
