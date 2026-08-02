@@ -292,6 +292,10 @@ def clean_item_name_english(name: str) -> str:
         return ""
     
     text = name.strip()
+
+    # শুরুতে "4." "12." এর মতো digit + dot থাকলে বাদ দাও
+    text = re.sub(r'^\d+\.\s*', '', text).strip()
+
     lower = text.lower()
     
     prefixes = ["xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx"]
