@@ -298,7 +298,7 @@ def clean_item_name_english(name: str) -> str:
 
     lower = text.lower()
     
-    prefixes = ["xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx"]
+    prefixes = ["SPORT", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx", "xxxxx"]
     
     for p in prefixes:
         if lower.startswith(p):
